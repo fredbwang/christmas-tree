@@ -2183,388 +2183,433 @@
       e.target.value = '';
     }
 
-    // 烟花系统
+    // 烟花系统 - 设计师增强版
     class Firework {
       constructor(startPos) {
         this.startPos = startPos;
-        this.phase = 'launch'; // launch, explode, secondary, fade
+        this.phase = 'launch'; 
         this.startTime = Date.now();
         this.particles = [];
-        this.trails = [];
         this.rings = [];
         this.sparks = [];
-        this.secondaryBursts = [];
         this.glowLight = null;
 
-        // 随机烟花颜色主题
+        // 设计师配色方案 - 真实金属燃烧色
         const themes = [
-          [0xff0040, 0xff6b6b, 0xffffff], // 红色系
-          [0x00ff88, 0x40ffaa, 0xaaffcc], // 绿色系
-          [0x4488ff, 0x66aaff, 0xaaccff], // 蓝色系
-          [0xffdd00, 0xffee55, 0xffffaa], // 金色系
-          [0xff00ff, 0xff66ff, 0xffaaff], // 紫色系
-          [0x00ffff, 0x66ffff, 0xaaffff], // 青色系
-          [0xff8800, 0xffaa44, 0xffcc88], // 橙色系
+          { name: 'Strontium Red', colors: [0xff3333, 0xffcccc, 0xaa0000] },
+          { name: 'Barium Green', colors: [0x33ff33, 0xccffcc, 0x00aa00] },
+          { name: 'Copper Blue', colors: [0x3388ff, 0xccccff, 0x0022aa] },
+          { name: 'Sodium Gold', colors: [0xffcc33, 0xffeeaa, 0xcc8800] },
+          { name: 'Potassium Violet', colors: [0xcc33ff, 0xeeccee, 0x8800aa] },
+          { name: 'Magnesium White', colors: [0xffffff, 0xeeeeee, 0xcccccc] }, // 纯白闪光
+          { name: 'Calcium Orange', colors: [0xff8833, 0xffccaa, 0xaa4400] },
         ];
-        this.colors = themes[Math.floor(Math.random() * themes.length)];
-        this.targetY = 4 + Math.random() * 4;
+        const theme = themes[Math.floor(Math.random() * themes.length)];
+        this.colors = theme.colors;
+        this.targetY = 6 + Math.random() * 3; // 更高的爆发点
 
         this.createRocket();
       }
 
       createRocket() {
-        // 火箭拖尾
-        const trailCount = 30;
-        const positions = new Float32Array(trailCount * 3);
-        const sizes = new Float32Array(trailCount);
-
-        for (let i = 0; i < trailCount; i++) {
-          positions[i * 3] = this.startPos[0];
-          positions[i * 3 + 1] = this.startPos[1];
-          positions[i * 3 + 2] = this.startPos[2];
-          sizes[i] = 0.1 * (1 - i / trailCount);
-        }
-
+        // 火箭本体 - 亮白色头部
         const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
-
+        geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array([0,0,0]), 3));
         const material = new THREE.PointsMaterial({
-          color: this.colors[0],
-          size: 0.15,
-          transparent: true,
-          opacity: 1,
-          blending: THREE.AdditiveBlending
+            color: 0xffffff,
+            size: 0.3,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            map: sparkleTexture,
+            depthWrite: false
         });
-
         this.rocket = new THREE.Points(geometry, material);
-        this.rocket.userData = { positions: [...this.startPos], trail: [] };
+        this.rocket.position.set(...this.startPos);
+        
+        // 升级版拖尾 - 使用单独的粒子系统管理
+        this.launchTrailParticles = [];
+        const trailGeo = new THREE.BufferGeometry();
+        const trailPos = new Float32Array(60 * 3); // 60个粒子
+        const trailCol = new Float32Array(60 * 3);
+        const trailSize = new Float32Array(60);
+        
+        trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPos, 3));
+        trailGeo.setAttribute('color', new THREE.BufferAttribute(trailCol, 3));
+        trailGeo.setAttribute('size', new THREE.BufferAttribute(trailSize, 1));
+        
+        this.launchTrail = new THREE.Points(trailGeo, new THREE.PointsMaterial({
+            size: 0.15,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.8,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            map: sparkleTexture
+        }));
+        
         scene.add(this.rocket);
+        scene.add(this.launchTrail);
       }
 
       createExplosion(pos) {
-        // 主爆炸 - 球形爆发
-        const mainCount = 200;
-        this.createBurst(pos, mainCount, 4, this.colors[0], 'main');
+        // 1. 主爆炸 - 完美的球形或花朵形状
+        const mainCount = 400; // 更多粒子
+        this.createBurst(pos, mainCount, 6.0, this.colors[0], 'main');
 
-        // 内层爆发
-        this.createBurst(pos, 100, 2.5, this.colors[1], 'inner');
+        // 2. 核心 - 极亮，快速消散
+        this.createBurst(pos, 50, 2.0, 0xffffff, 'core');
 
-        // 核心闪光
-        this.createBurst(pos, 50, 1.5, 0xffffff, 'core');
+        // 3. 二次星尘 - 散落的余烬
+        setTimeout(() => {
+             this.createBurst(pos, 100, 4.0, this.colors[1], 'dust');
+        }, 50);
 
-        // 环形效果
-        this.createRing(pos, this.colors[0]);
-        this.createRing(pos, this.colors[1], 0.3);
+        // 4. 冲击波环
+        this.createRing(pos, this.colors[1]);
 
-        // 火花拖尾
-        this.createSparkTrails(pos, 20);
-
-        // 动态光源
-        this.glowLight = new THREE.PointLight(this.colors[0], 3, 15);
+        // 5. 动态光源 - 强烈的瞬间闪光
+        this.glowLight = new THREE.PointLight(this.colors[0], 8, 20); // 强度更高
         this.glowLight.position.set(...pos);
         scene.add(this.glowLight);
 
-        // 全局闪光
+        // 全局环境闪光
         flashLight.position.set(...pos);
-        flashLight.color.setHex(this.colors[0]);
-        flashLight.intensity = 5;
-
-        // 延迟二次爆炸
-        setTimeout(() => this.createSecondaryBursts(pos), 200);
-        setTimeout(() => this.createSecondaryBursts(pos), 400);
+        flashLight.color.setHex(this.colors[1]);
+        flashLight.intensity = 8;
       }
 
-      createBurst(pos, count, speed, color, type) {
+      createBurst(pos, count, speedBase, colorHex, type) {
         const positions = new Float32Array(count * 3);
         const colors = new Float32Array(count * 3);
+        const sizes = new Float32Array(count);
         const velocities = [];
-        const baseColor = new THREE.Color(color);
+        const baseColor = new THREE.Color(colorHex);
+        const white = new THREE.Color(0xffffff);
 
         for (let i = 0; i < count; i++) {
           positions[i * 3] = pos[0];
           positions[i * 3 + 1] = pos[1];
           positions[i * 3 + 2] = pos[2];
 
-          // 球形分布
-          const theta = Math.random() * Math.PI * 2;
-          const phi = Math.acos(2 * Math.random() - 1);
-          const r = speed * (0.5 + Math.random() * 0.5);
+          // 物理分布 - 使用Fibonacci Sphere算法获得均匀球体分布，然后添加随机扰动
+          const offset = 2 / count;
+          const increment = Math.PI * (3 - Math.sqrt(5));
+          
+          let y = ((i * offset) - 1) + (offset / 2);
+          let r = Math.sqrt(1 - Math.pow(y, 2));
+          let phi = ((i + 1) % count) * increment;
+          
+          let x = Math.cos(phi) * r;
+          let z = Math.sin(phi) * r;
 
+          // 添加"不完美"的真实感
+          x += (Math.random() - 0.5) * 0.1;
+          y += (Math.random() - 0.5) * 0.1;
+          z += (Math.random() - 0.5) * 0.1;
+
+          // 速度随机化
+          const speed = speedBase * (0.8 + Math.random() * 0.4);
+          
           velocities.push({
-            x: r * Math.sin(phi) * Math.cos(theta),
-            y: r * Math.sin(phi) * Math.sin(theta),
-            z: r * Math.cos(phi),
-            drag: 0.96 + Math.random() * 0.02,
-            twinkle: Math.random() * Math.PI * 2
+            x: x * speed,
+            y: y * speed,
+            z: z * speed,
+            drag: 0.92 + Math.random() * 0.04, // 空气阻力
+            gravity: 0.03 + Math.random() * 0.02, // 不同重量的粒子
+            life: 1.0,
+            decay: 0.005 + Math.random() * 0.01 // 燃烧速度
           });
 
-          // 颜色变化
-          const c = baseColor.clone();
-          c.offsetHSL(Math.random() * 0.1 - 0.05, 0, Math.random() * 0.2);
-          colors[i * 3] = c.r;
-          colors[i * 3 + 1] = c.g;
-          colors[i * 3 + 2] = c.b;
+          // 初始颜色 - 爆炸瞬间偏白(高温)
+          colors[i * 3] = 1.0;
+          colors[i * 3 + 1] = 1.0;
+          colors[i * 3 + 2] = 1.0;
+          
+          sizes[i] = (type === 'core' ? 0.4 : 0.25) * (0.8 + Math.random() * 0.4);
         }
 
         const geometry = new THREE.BufferGeometry();
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
 
         const material = new THREE.PointsMaterial({
-          size: type === 'core' ? 0.25 : 0.18,
+          size: 1.0,
           vertexColors: true,
           transparent: true,
           opacity: 1,
-          blending: THREE.AdditiveBlending
+          map: sparkleTexture,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          sizeAttenuation: true
         });
 
         const burst = new THREE.Points(geometry, material);
-        burst.userData = { velocities, origin: [...pos], startTime: Date.now(), type };
+        // 存储目标颜色用于渐变
+        burst.userData = { 
+            velocities, 
+            origin: [...pos], 
+            startTime: Date.now(), 
+            type, 
+            targetColor: baseColor,
+            positionsArray: positions // 保存引用以便物理更新
+        };
         this.particles.push(burst);
         scene.add(burst);
       }
 
-      createRing(pos, color, delay = 0) {
-        setTimeout(() => {
-          const ringGeo = new THREE.RingGeometry(0.1, 0.3, 64);
-          const ringMat = new THREE.MeshBasicMaterial({
-            color,
-            transparent: true,
-            opacity: 1,
-            side: THREE.DoubleSide,
-            blending: THREE.AdditiveBlending
+      createRing(pos, colorHex) {
+          // 冲击波环 - 快速扩大的圆环
+          const geometry = new THREE.RingGeometry(0.1, 0.2, 64);
+          const material = new THREE.MeshBasicMaterial({
+              color: colorHex,
+              transparent: true,
+              opacity: 0.8,
+              side: THREE.DoubleSide,
+              blending: THREE.AdditiveBlending
           });
-          const ring = new THREE.Mesh(ringGeo, ringMat);
+          const ring = new THREE.Mesh(geometry, material);
           ring.position.set(...pos);
-          ring.rotation.x = Math.random() * Math.PI;
-          ring.rotation.y = Math.random() * Math.PI;
-          ring.userData = { startTime: Date.now(), startScale: 0.1 };
+          ring.lookAt(camera.position); // 始终面向相机
+          ring.userData = { scale: 1, opacity: 0.8 };
           this.rings.push(ring);
           scene.add(ring);
-        }, delay * 1000);
-      }
-
-      createSparkTrails(pos, count) {
-        for (let i = 0; i < count; i++) {
-          const trailLength = 15;
-          const positions = new Float32Array(trailLength * 3);
-
-          for (let j = 0; j < trailLength; j++) {
-            positions[j * 3] = pos[0];
-            positions[j * 3 + 1] = pos[1];
-            positions[j * 3 + 2] = pos[2];
-          }
-
-          const geometry = new THREE.BufferGeometry();
-          geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-
-          const theta = Math.random() * Math.PI * 2;
-          const phi = Math.acos(2 * Math.random() - 1);
-          const speed = 3 + Math.random() * 3;
-
-          const material = new THREE.PointsMaterial({
-            color: this.colors[2],
-            size: 0.08,
-            transparent: true,
-            opacity: 1,
-            blending: THREE.AdditiveBlending
-          });
-
-          const spark = new THREE.Points(geometry, material);
-          spark.userData = {
-            velocity: {
-              x: speed * Math.sin(phi) * Math.cos(theta),
-              y: speed * Math.sin(phi) * Math.sin(theta),
-              z: speed * Math.cos(phi)
-            },
-            positions: Array(trailLength).fill().map(() => [...pos]),
-            startTime: Date.now()
-          };
-          this.sparks.push(spark);
-          scene.add(spark);
-        }
-      }
-
-      createSecondaryBursts(pos) {
-        const count = 3 + Math.floor(Math.random() * 3);
-        for (let i = 0; i < count; i++) {
-          const offset = [
-            pos[0] + (Math.random() - 0.5) * 3,
-            pos[1] + (Math.random() - 0.5) * 3,
-            pos[2] + (Math.random() - 0.5) * 3
-          ];
-          this.createBurst(offset, 50, 2, this.colors[Math.floor(Math.random() * 3)], 'secondary');
-        }
       }
 
       update() {
         const now = Date.now();
+        const dt = 0.016; // 假设60fps的固定步长用于物理计算
         const elapsed = (now - this.startTime) / 1000;
 
-        // 发射阶段
-        if (this.phase === 'launch' && this.rocket) {
-          const launchSpeed = 8;
-          const currentY = this.startPos[1] + launchSpeed * elapsed;
+        // --- 阶段 1: 发射 ---
+        if (this.phase === 'launch') {
+          const launchSpeed = 12; // 更快的发射速度
+          const currentY = this.startPos[1] + launchSpeed * elapsed - 4.9 * elapsed * elapsed; // 抛物线运动
 
-          // 更新火箭位置和拖尾
-          const pos = this.rocket.geometry.attributes.position.array;
-          const trail = this.rocket.userData.trail;
-
-          trail.unshift([this.startPos[0], currentY, this.startPos[2]]);
-          if (trail.length > 30) trail.pop();
-
-          for (let i = 0; i < trail.length; i++) {
-            if (trail[i]) {
-              pos[i * 3] = trail[i][0] + (Math.random() - 0.5) * 0.05;
-              pos[i * 3 + 1] = trail[i][1];
-              pos[i * 3 + 2] = trail[i][2] + (Math.random() - 0.5) * 0.05;
-            }
+          this.rocket.position.set(this.startPos[0], currentY, this.startPos[2]);
+          
+          // 更新发射拖尾
+          const positions = this.launchTrail.geometry.attributes.position.array;
+          const colors = this.launchTrail.geometry.attributes.color.array;
+          const sizes = this.launchTrail.geometry.attributes.size.array;
+          
+          // 添加新粒子
+          this.launchTrailParticles.unshift({
+              x: this.startPos[0] + (Math.random()-0.5)*0.1,
+              y: currentY,
+              z: this.startPos[2] + (Math.random()-0.5)*0.1,
+              life: 1.0
+          });
+          if (this.launchTrailParticles.length > 60) this.launchTrailParticles.pop();
+          
+          // 更新粒子数组
+          for(let i=0; i<60; i++) {
+              if (this.launchTrailParticles[i]) {
+                  const p = this.launchTrailParticles[i];
+                  positions[i*3] = p.x;
+                  positions[i*3+1] = p.y;
+                  positions[i*3+2] = p.z;
+                  
+                  // 颜色渐变: 白 -> 金 -> 红
+                  const life = p.life;
+                  colors[i*3] = 1.0;
+                  colors[i*3+1] = life * 0.8;
+                  colors[i*3+2] = life * 0.2;
+                  
+                  sizes[i] = life * 0.2;
+                  
+                  p.life -= 0.05; // 快速消失
+              } else {
+                  sizes[i] = 0;
+              }
           }
-          this.rocket.geometry.attributes.position.needsUpdate = true;
+          this.launchTrail.geometry.attributes.position.needsUpdate = true;
+          this.launchTrail.geometry.attributes.color.needsUpdate = true;
+          this.launchTrail.geometry.attributes.size.needsUpdate = true;
 
-          // 到达目标高度时爆炸
-          if (currentY >= this.targetY) {
+          // 爆炸判定 (到达最高点附近)
+          if (currentY >= this.targetY || elapsed > 1.5) {
             this.phase = 'explode';
             scene.remove(this.rocket);
+            scene.remove(this.launchTrail);
             this.createExplosion([this.startPos[0], currentY, this.startPos[2]]);
           }
         }
 
-        // 更新所有粒子
+        // --- 阶段 2: 爆炸 & 引力 ---
+        let anyAlive = false;
+
         this.particles.forEach(burst => {
-          const burstElapsed = (now - burst.userData.startTime) / 1000;
-          const pos = burst.geometry.attributes.position.array;
+          const positions = burst.geometry.attributes.position.array;
+          const colors = burst.geometry.attributes.color.array;
+          const sizes = burst.geometry.attributes.size.array;
           const vel = burst.userData.velocities;
-          const origin = burst.userData.origin;
+          const type = burst.userData.type;
+          const targetColor = burst.userData.targetColor;
+          
+          // 爆炸后的时间
+          const burstTime = (now - burst.userData.startTime) / 1000;
 
           for (let i = 0; i < vel.length; i++) {
             const v = vel[i];
-            
-            // 树爆炸时的行为：所有火花一同炸开
-            if (isTreeExploding) {
-               const x = pos[i * 3];
-               const y = pos[i * 3 + 1];
-               const z = pos[i * 3 + 2];
-               const dist = Math.sqrt(x*x + z*z);
-               const dirX = x / (dist || 1);
-               const dirZ = z / (dist || 1);
-               // 强烈的向外斥力
-               pos[i * 3] += dirX * 0.5;
-               pos[i * 3 + 1] += (Math.random() - 0.5) * 0.5;
-               pos[i * 3 + 2] += dirZ * 0.5;
-               // 快速淡出
-               burst.material.opacity *= 0.95;
-               continue;
+            if (v.life <= 0) {
+                sizes[i] = 0;
+                continue;
             }
+            anyAlive = true;
 
-            // 正常引力效果 ( gravitized on the tree )
-            if (burstElapsed > 1.0) {
-                // 吸引向树的圆锥体表面
-                const currentY = pos[i * 3 + 1];
-                // 树的半径估计
-                const treeR = Math.max(0, 2.5 * (1 - (currentY / 6))); 
-                const currentR = Math.sqrt(pos[i * 3]**2 + pos[i * 3 + 2]**2);
+            // --- 物理更新 ---
+            
+            // 1. 树爆炸时的行为：温和扩散
+            if (isTreeExploding) {
+               const x = positions[i * 3];
+               const y = positions[i * 3 + 1];
+               const z = positions[i * 3 + 2];
+               const dist = Math.sqrt(x*x + z*z) || 0.1;
+               
+               // 径向向外 (0.8 -> 0.05)
+               positions[i * 3] += (x/dist) * 0.05; 
+               positions[i * 3 + 1] += (Math.random() - 0.5) * 0.02;
+               positions[i * 3 + 2] += (z/dist) * 0.05;
+               
+               v.life -= 0.02; // 缓慢消失
+               v.isAttached = false;
+            } 
+            else {
+                // 2. 正常物理
                 
-                if (currentY > 0 && currentY < 6) {
-                    // 向树中心吸附
-                    const factor = 0.05;
-                    pos[i * 3] += (0 - pos[i * 3]) * factor * 0.1; // X轴吸向中心
-                    pos[i * 3 + 2] += (0 - pos[i * 3 + 2]) * factor * 0.1; // Z轴吸向中心
+                // 空气阻力 (Willow effect: drag high = slow fall)
+                v.x *= v.drag;
+                v.y *= v.drag;
+                v.z *= v.drag;
+                
+                // 重力
+                if (!v.isAttached) {
+                    v.y -= v.gravity;
+                }
+
+                // 3. 神奇引力效果 (Gravitize to tree)
+                // 延长吸附窗口，确保大部分粒子都能附着
+                if (burstTime > 0.5 && burstTime < 10.0) {
+                    const currentY = positions[i * 3 + 1];
+                    const currentX = positions[i * 3];
+                    const currentZ = positions[i * 3 + 2];
                     
-                    // 如果接近树表面，减速并停留在那里
-                    if (Math.abs(currentR - treeR) < 0.5) {
-                        v.x *= 0.8;
-                        v.y *= 0.8;
-                        v.z *= 0.8;
-                        // 抵消重力，使其悬浮
-                        v.y += 0.015; 
+                    // 树的形状近似
+                    if (currentY > 0 && currentY < 7) {
+                        const treeRadiusAtY = Math.max(0.2, 2.5 * (1 - (currentY / 7)));
+                        const distToCenter = Math.sqrt(currentX*currentX + currentZ*currentZ);
+                        
+                        // 计算吸力
+                        const attraction = 0.08;
+                        const targetRadius = treeRadiusAtY + 0.2; // 稍微在树表面外
+                        
+                        if (distToCenter > 0.1) {
+                            // 向树表面移动
+                            const dirX = -currentX / distToCenter;
+                            const dirZ = -currentZ / distToCenter;
+                            
+                            // 径向吸力
+                            if (distToCenter > targetRadius) {
+                                v.x += dirX * attraction;
+                                v.z += dirZ * attraction;
+                            }
+                            
+                            // 接近树时，减速并抗重力（悬浮）
+                            if (Math.abs(distToCenter - targetRadius) < 0.8) {
+                                v.isAttached = true;
+                                v.decay = 0;
+                                v.life = Math.max(v.life, 0.6);
+                                v.x = 0; v.y = 0; v.z = 0;
+                                
+                                const angle = Math.atan2(currentZ, currentX);
+                                pos[i * 3] = Math.cos(angle) * targetRadius;
+                                pos[i * 3 + 2] = Math.sin(angle) * targetRadius;
+                            }
+                        }
                     }
+                }
+
+                // 更新位置
+                positions[i * 3] += v.x * dt * 10;
+                positions[i * 3 + 1] += v.y * dt * 10;
+                positions[i * 3 + 2] += v.z * dt * 10;
+                
+                // 地面碰撞
+                if (positions[i * 3 + 1] < -2) {
+                    v.y *= -0.5;
+                    positions[i * 3 + 1] = -2;
                 }
             }
 
-            // 应用阻力
-            v.x *= v.drag;
-            v.y *= v.drag;
-            v.z *= v.drag;
-            // 重力
-            v.y -= 0.015;
-
-            pos[i * 3] += v.x * 0.016;
-            pos[i * 3 + 1] += v.y * 0.016;
-            pos[i * 3 + 2] += v.z * 0.016;
-          }
-          burst.geometry.attributes.position.needsUpdate = true;
-
-          // 闪烁和淡出 - 如果被吸引到树上，延长寿命
-          let fade = Math.max(0, 1 - burstElapsed / 2.5);
-          if (!isTreeExploding && burstElapsed > 1.5) {
-              // 附着在树上时保持微弱发光
-              fade = Math.max(fade, 0.3 + 0.2 * Math.sin(now * 0.005)); 
+            // --- 颜色热力学更新 ---
+            
+            if (!v.isAttached) {
+                v.life -= v.decay;
+            }
+            
+            if (v.life > 0.8) {
+                // 白热阶段
+                const t = (v.life - 0.8) / 0.2; // 0 to 1
+                colors[i*3] = 1.0;
+                colors[i*3+1] = 1.0 * t + targetColor.g * (1-t);
+                colors[i*3+2] = 1.0 * t + targetColor.b * (1-t);
+            } else {
+                // 冷却阶段
+                let t = v.life / 0.8; 
+                let twinkle = 0.8 + 0.2 * Math.sin(now * 0.02 + i);
+                
+                // **核心修改：附着状态下的特殊闪烁**
+                if (v.isAttached) {
+                    t = 1.0; // 保持全色
+                    // 呼吸灯效果
+                    twinkle = 0.7 + 0.4 * Math.sin(now * 0.003 + i * 0.1); 
+                }
+                
+                colors[i*3] = targetColor.r * t * twinkle;
+                colors[i*3+1] = targetColor.g * t * twinkle;
+                colors[i*3+2] = targetColor.b * t * twinkle;
+            }
+            
+            // 附着时保持一定大小
+            sizes[i] = (type === 'core' ? 0.6 : 0.3) * (v.isAttached ? 0.5 : v.life);
           }
           
-          const twinkle = 0.7 + 0.3 * Math.sin(burstElapsed * 15);
-          burst.material.opacity = fade * twinkle;
-          burst.material.size = (burst.userData.type === 'core' ? 0.25 : 0.18) * (0.5 + fade * 0.5);
+          burst.geometry.attributes.position.needsUpdate = true;
+          burst.geometry.attributes.color.needsUpdate = true;
+          burst.geometry.attributes.size.needsUpdate = true;
         });
 
-        // 更新环
+        // 更新冲击波环
         this.rings.forEach(ring => {
-          const ringElapsed = (now - ring.userData.startTime) / 1000;
-          const scale = ring.userData.startScale + ringElapsed * 8;
-          ring.scale.set(scale, scale, 1);
-          ring.material.opacity = Math.max(0, 1 - ringElapsed / 0.8);
-          ring.rotation.z += 0.02;
+            ring.userData.scale += 0.5;
+            ring.scale.setScalar(ring.userData.scale);
+            ring.userData.opacity *= 0.92;
+            ring.material.opacity = ring.userData.opacity;
+            if (ring.userData.opacity > 0.01) anyAlive = true;
+            else scene.remove(ring);
         });
-
-        // 更新火花拖尾
-        this.sparks.forEach(spark => {
-          const sparkElapsed = (now - spark.userData.startTime) / 1000;
-          const v = spark.userData.velocity;
-          const positions = spark.userData.positions;
-
-          // 更新头部位置
-          v.y -= 0.08;
-          v.x *= 0.98;
-          v.z *= 0.98;
-
-          const head = positions[0];
-          const newHead = [head[0] + v.x * 0.016, head[1] + v.y * 0.016, head[2] + v.z * 0.016];
-          positions.unshift(newHead);
-          positions.pop();
-
-          // 更新几何体
-          const pos = spark.geometry.attributes.position.array;
-          for (let i = 0; i < positions.length; i++) {
-            pos[i * 3] = positions[i][0];
-            pos[i * 3 + 1] = positions[i][1];
-            pos[i * 3 + 2] = positions[i][2];
-          }
-          spark.geometry.attributes.position.needsUpdate = true;
-          spark.material.opacity = Math.max(0, 1 - sparkElapsed / 2);
-        });
+        
+        // 清理无效环
+        this.rings = this.rings.filter(r => r.parent);
 
         // 更新光源
         if (this.glowLight) {
-          const lightElapsed = (now - this.startTime) / 1000 - 0.5;
-          if (lightElapsed > 0) {
-            this.glowLight.intensity = Math.max(0, 3 - lightElapsed * 2);
-          }
+            this.glowLight.intensity *= 0.92;
+            if (this.glowLight.intensity < 0.1) {
+                scene.remove(this.glowLight);
+                this.glowLight = null;
+            }
         }
 
-        // 全局闪光衰减
-        if (flashLight.intensity > 0) {
-          flashLight.intensity *= 0.9;
-        }
-
-        return elapsed < 4; // 4秒后结束
+        return anyAlive || this.phase === 'launch';
       }
 
       dispose() {
-        if (this.rocket) scene.remove(this.rocket);
-        this.particles.forEach(p => scene.remove(p));
-        this.rings.forEach(r => scene.remove(r));
-        this.sparks.forEach(s => scene.remove(s));
+        if (this.rocket) { scene.remove(this.rocket); this.rocket.geometry.dispose(); }
+        if (this.launchTrail) { scene.remove(this.launchTrail); this.launchTrail.geometry.dispose(); }
+        this.particles.forEach(p => { scene.remove(p); p.geometry.dispose(); });
+        this.rings.forEach(r => { scene.remove(r); r.geometry.dispose(); });
         if (this.glowLight) scene.remove(this.glowLight);
       }
     }
@@ -2711,78 +2756,101 @@
       }
 
       // 星星动画 - 华丽版
-      if (!isTreeExploding && starGroup) {
-        // 不旋转整个组，分别控制星星和粒子的旋转速度
+      if (starGroup) {
+        // 缩放脉动
         const pulse = 1 + Math.sin(time * 0.5) * 0.05;
         starGroup.scale.setScalar(pulse);
 
-        // 星星本体和粒子分开旋转
         starGroup.children.forEach(child => {
+          // 星星本体
           if (child.isMesh && child.material && !child.userData.isStarRays) {
-            // 星星本体旋转速度 1x
-            child.rotation.y += 0.001;
-            // 星星发光脉动 - 更慢
-            const glowIntensity = 0.8 + 0.3 * Math.sin(time * 0.4);
-            child.material.emissiveIntensity = glowIntensity;
+            if (!isTreeExploding) {
+                child.rotation.y += 0.001;
+                child.material.emissiveIntensity = 0.8 + 0.3 * Math.sin(time * 0.4);
+            } else {
+                // 爆炸时隐藏本体或者飞走？
+                // 简单起见，让它稍微飞高一点并旋转
+                child.position.y += 0.01;
+                child.rotation.y += 0.05; 
+                child.material.opacity = Math.max(0, 1 - (Date.now() - treeExplodeStartTime)/2000);
+            }
           }
 
-          // 星芒粒子 - 每个粒子独立旋转
+          // 星芒粒子
           if (child.userData.isStarRays && child.userData.rayData) {
             const rayData = child.userData.rayData;
             const positions = child.geometry.attributes.position.array;
             const colors = child.geometry.attributes.color.array;
             const sizes = child.geometry.attributes.size.array;
-
-            // 使用更慢的时间因子
             const slowTime = time * 0.3;
+            
+            // 爆炸状态处理
+            if (isTreeExploding) {
+                const elapsed = (Date.now() - treeExplodeStartTime) / 1000;
+                
+                for (let i = 0; i < rayData.length; i++) {
+                    const data = rayData[i];
+                    
+                    // 初始化爆炸目标 (只做一次)
+                    if (!data.explosionTarget) {
+                        const angle = Math.random() * Math.PI * 2;
+                        const dist = 10 + Math.random() * 20;
+                        data.explosionTarget = [
+                            Math.cos(angle) * dist,
+                            (Math.random() - 0.5) * 20,
+                            Math.sin(angle) * dist
+                        ];
+                    }
+                    
+                    // 飞向目标
+                    if (elapsed < 5) {
+                        positions[i * 3] += (data.explosionTarget[0] - positions[i * 3]) * 0.02;
+                        positions[i * 3 + 1] += (data.explosionTarget[1] - positions[i * 3 + 1]) * 0.02;
+                        positions[i * 3 + 2] += (data.explosionTarget[2] - positions[i * 3 + 2]) * 0.02;
+                    } else {
+                        // 返回 (rebuildTree会重置位置，这里只需要平滑过渡)
+                        const orig = data.originalPos;
+                        positions[i * 3] += (orig[0] - positions[i * 3]) * 0.05;
+                        positions[i * 3 + 1] += (orig[1] - positions[i * 3 + 1]) * 0.05;
+                        positions[i * 3 + 2] += (orig[2] - positions[i * 3 + 2]) * 0.05;
+                        
+                        if (elapsed > 6.8) data.explosionTarget = null; // 重置
+                    }
+                }
+            } else {
+                // 正常旋转逻辑
+                for (let i = 0; i < rayData.length; i++) {
+                  const data = rayData[i];
+                  const orig = data.originalPos;
 
-            for (let i = 0; i < rayData.length; i++) {
-              const data = rayData[i];
-              const orig = data.originalPos;
+                  data.currentAngle += data.individualSpinSpeed;
+                  const distXZ = Math.sqrt(orig[0] * orig[0] + orig[2] * orig[2]);
+                  const rotatedX = Math.cos(data.currentAngle) * distXZ;
+                  const rotatedZ = Math.sin(data.currentAngle) * distXZ;
 
-              // 更新每个粒子的绕星角度（每个粒子速度不同）
-              data.currentAngle += data.individualSpinSpeed;
+                  const orbitAngle = slowTime * data.orbitSpeed + data.phase;
+                  const orbitX = Math.cos(orbitAngle) * data.orbitRadius;
+                  const orbitZ = Math.sin(orbitAngle) * data.orbitRadius;
+                  const floatY = Math.sin(slowTime * data.floatSpeed + data.spinPhase) * data.floatAmount;
+                  const spiralAngle = slowTime * 0.05 + data.phase;
+                  const spiralOffset = Math.sin(spiralAngle) * 0.02;
 
-              // 计算粒子距离星心的水平距离
-              const distXZ = Math.sqrt(orig[0] * orig[0] + orig[2] * orig[2]);
+                  positions[i * 3] = rotatedX + orbitX + spiralOffset;
+                  positions[i * 3 + 1] = orig[1] + floatY;
+                  positions[i * 3 + 2] = rotatedZ + orbitZ;
 
-              // 每个粒子以自己的速度绕星旋转
-              const rotatedX = Math.cos(data.currentAngle) * distXZ;
-              const rotatedZ = Math.sin(data.currentAngle) * distXZ;
-
-              // 非常缓慢的围绕原位置公转 - 内快外慢
-              const orbitAngle = slowTime * data.orbitSpeed + data.phase;
-              const orbitX = Math.cos(orbitAngle) * data.orbitRadius;
-              const orbitZ = Math.sin(orbitAngle) * data.orbitRadius;
-
-              // 非常缓慢的上下浮动
-              const floatY = Math.sin(slowTime * data.floatSpeed + data.spinPhase) * data.floatAmount;
-
-              // 几乎静止的螺旋运动
-              const spiralAngle = slowTime * 0.05 + data.phase;
-              const spiralOffset = Math.sin(spiralAngle) * 0.02;
-
-              positions[i * 3] = rotatedX + orbitX + spiralOffset;
-              positions[i * 3 + 1] = orig[1] + floatY;
-              positions[i * 3 + 2] = rotatedZ + orbitZ;
-
-              // 非常柔和的发光脉动效果
-              const glow = 0.85 + 0.15 * Math.sin(slowTime * 0.8 + data.glowPhase);
-              const sparkle = 0.92 + 0.08 * Math.sin(slowTime * 1.5 + data.spinPhase);
-              colors[i * 3] = Math.min(1, glow * sparkle);
-              colors[i * 3 + 1] = Math.min(1, (0.85 + glow * 0.15) * sparkle);
-              colors[i * 3 + 2] = Math.min(1, (0.5 + glow * 0.15) * sparkle);
-
-              // 非常缓慢的大小脉动
-              sizes[i] = data.baseSize * (0.95 + 0.1 * Math.sin(slowTime * 0.6 + data.glowPhase));
+                  const glow = 0.85 + 0.15 * Math.sin(slowTime * 0.8 + data.glowPhase);
+                  const sparkle = 0.92 + 0.08 * Math.sin(slowTime * 1.5 + data.spinPhase);
+                  colors[i * 3] = Math.min(1, glow * sparkle);
+                  colors[i * 3 + 1] = Math.min(1, (0.85 + glow * 0.15) * sparkle);
+                  colors[i * 3 + 2] = Math.min(1, (0.5 + glow * 0.15) * sparkle);
+                  sizes[i] = data.baseSize * (0.95 + 0.1 * Math.sin(slowTime * 0.6 + data.glowPhase));
+                }
             }
 
             child.geometry.attributes.position.needsUpdate = true;
             child.geometry.attributes.color.needsUpdate = true;
             child.geometry.attributes.size.needsUpdate = true;
-
-            // 整体轻微倾斜
-            child.rotation.x = Math.sin(time * 0.03) * 0.02;
           }
         });
       }
