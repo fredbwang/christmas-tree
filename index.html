@@ -268,48 +268,98 @@
       return texture;
     }
 
-    // 创建松针纹理
+    // 创建松针纹理 - 更逼真的松针簇
     function createPineNeedleTexture() {
       const canvas = document.createElement('canvas');
-      canvas.width = 64;
-      canvas.height = 64;
+      canvas.width = 128;
+      canvas.height = 128;
       const ctx = canvas.getContext('2d');
-      const cx = 32, cy = 32;
+      const cx = 64, cy = 64;
 
-      ctx.clearRect(0, 0, 64, 64);
+      ctx.clearRect(0, 0, 128, 128);
 
-      // 松针簇 - 多根细长针叶从中心向外发散
-      const needleCount = 7;
-      for (let i = 0; i < needleCount; i++) {
-        const angle = (i / needleCount) * Math.PI * 2 - Math.PI / 2;
-        const length = 20 + Math.random() * 8;
+      // 多层松针簇 - 模拟真实松树针叶的层叠效果
+      const layers = 3;
+      for (let layer = 0; layer < layers; layer++) {
+        const layerOpacity = 0.6 + layer * 0.15;
+        const layerOffset = (layer - 1) * 2;
 
-        ctx.save();
-        ctx.translate(cx, cy);
-        ctx.rotate(angle);
+        // 每层有多个针叶束
+        const bundleCount = 5 + layer * 2;
+        for (let b = 0; b < bundleCount; b++) {
+          const bundleAngle = (b / bundleCount) * Math.PI * 2 + layer * 0.3;
+          const bundleDist = 8 + layer * 6 + Math.random() * 4;
+          const bx = cx + Math.cos(bundleAngle) * bundleDist + layerOffset;
+          const by = cy + Math.sin(bundleAngle) * bundleDist + layerOffset;
 
-        // 渐变针叶
-        const gradient = ctx.createLinearGradient(0, 0, 0, -length);
-        gradient.addColorStop(0, 'rgba(34, 80, 34, 1)');
-        gradient.addColorStop(0.5, 'rgba(50, 120, 50, 0.9)');
-        gradient.addColorStop(1, 'rgba(80, 160, 80, 0.3)');
+          // 每束有5-8根针叶
+          const needleCount = 5 + Math.floor(Math.random() * 4);
+          for (let i = 0; i < needleCount; i++) {
+            const needleAngle = bundleAngle + (Math.random() - 0.5) * 0.8;
+            const needleLength = 18 + Math.random() * 14;
+            const curve = (Math.random() - 0.5) * 0.15; // 轻微弯曲
 
-        ctx.strokeStyle = gradient;
-        ctx.lineWidth = 2.5;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.lineTo(0, -length);
-        ctx.stroke();
+            // 针叶渐变 - 从深绿到浅绿尖端
+            const hue = 0.28 + Math.random() * 0.06;
+            const saturation = 0.5 + Math.random() * 0.3;
+            const baseLightness = 0.18 + Math.random() * 0.12;
 
-        ctx.restore();
+            const endX = bx + Math.cos(needleAngle + curve) * needleLength;
+            const endY = by + Math.sin(needleAngle + curve) * needleLength;
+
+            const gradient = ctx.createLinearGradient(bx, by, endX, endY);
+            gradient.addColorStop(0, `hsla(${hue * 360}, ${saturation * 100}%, ${baseLightness * 100}%, ${layerOpacity})`);
+            gradient.addColorStop(0.3, `hsla(${hue * 360}, ${(saturation - 0.1) * 100}%, ${(baseLightness + 0.08) * 100}%, ${layerOpacity * 0.9})`);
+            gradient.addColorStop(0.7, `hsla(${hue * 360}, ${(saturation - 0.15) * 100}%, ${(baseLightness + 0.18) * 100}%, ${layerOpacity * 0.7})`);
+            gradient.addColorStop(1, `hsla(${(hue + 0.02) * 360}, ${(saturation - 0.2) * 100}%, ${(baseLightness + 0.28) * 100}%, ${layerOpacity * 0.3})`);
+
+            ctx.strokeStyle = gradient;
+            ctx.lineWidth = 1.8 - layer * 0.2;
+            ctx.lineCap = 'round';
+
+            // 绘制略微弯曲的针叶
+            ctx.beginPath();
+            ctx.moveTo(bx, by);
+            const midX = (bx + endX) / 2 + Math.cos(needleAngle + Math.PI/2) * curve * needleLength * 0.3;
+            const midY = (by + endY) / 2 + Math.sin(needleAngle + Math.PI/2) * curve * needleLength * 0.3;
+            ctx.quadraticCurveTo(midX, midY, endX, endY);
+            ctx.stroke();
+          }
+        }
       }
 
-      // 中心点
-      ctx.fillStyle = 'rgba(60, 100, 60, 0.8)';
+      // 中心深色区域 - 模拟枝干连接处
+      const centerGradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, 12);
+      centerGradient.addColorStop(0, 'rgba(25, 50, 25, 0.9)');
+      centerGradient.addColorStop(0.5, 'rgba(35, 65, 35, 0.6)');
+      centerGradient.addColorStop(1, 'rgba(45, 80, 45, 0)');
+      ctx.fillStyle = centerGradient;
       ctx.beginPath();
-      ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+      ctx.arc(cx, cy, 12, 0, Math.PI * 2);
       ctx.fill();
+
+      // 添加一些高光针叶 - 模拟阳光照射
+      for (let i = 0; i < 8; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 15 + Math.random() * 25;
+        const length = 12 + Math.random() * 10;
+        const startX = cx + Math.cos(angle) * dist;
+        const startY = cy + Math.sin(angle) * dist;
+        const endX = startX + Math.cos(angle) * length;
+        const endY = startY + Math.sin(angle) * length;
+
+        const highlightGrad = ctx.createLinearGradient(startX, startY, endX, endY);
+        highlightGrad.addColorStop(0, 'rgba(80, 140, 80, 0.5)');
+        highlightGrad.addColorStop(0.5, 'rgba(100, 170, 100, 0.4)');
+        highlightGrad.addColorStop(1, 'rgba(130, 200, 130, 0.1)');
+
+        ctx.strokeStyle = highlightGrad;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
+      }
 
       const texture = new THREE.CanvasTexture(canvas);
       texture.needsUpdate = true;
@@ -1075,13 +1125,16 @@
       const particleTypes = new Float32Array(particleCount);
       treeParticleVelocities = [];
 
+      // 更真实的松针颜色 - 从深绿到浅绿渐变
       const greenColors = [
-        new THREE.Color(0x0d5c0d),
-        new THREE.Color(0x1a7a1a),
-        new THREE.Color(0x228b22),
-        new THREE.Color(0x2e8b2e),
-        new THREE.Color(0x32cd32),
-        new THREE.Color(0x3cb371),
+        new THREE.Color(0x0a3d0a),  // 深松绿
+        new THREE.Color(0x0d5c0d),  // 深森林绿
+        new THREE.Color(0x145214),  // 常绿深色
+        new THREE.Color(0x1a6b1a),  // 松树绿
+        new THREE.Color(0x228b22),  // 森林绿
+        new THREE.Color(0x2d7d2d),  // 中等绿
+        new THREE.Color(0x357a35),  // 鲜活绿
+        new THREE.Color(0x3d8b3d),  // 春绿
       ];
 
       let i = 0;
@@ -1101,35 +1154,53 @@
         let color, size, pType;
 
         if (rand < 0.78) {
-          // 松针 - 绿色系（增加到78%）
+          // 松针 - 更逼真的绿色系
           pType = 0;
-          color = greenColors[Math.floor(Math.random() * greenColors.length)].clone();
-          color.offsetHSL(0, 0, (Math.random() - 0.5) * 0.15);
-          size = 0.12 + Math.random() * 0.08;
 
-          // 松针串连效果 - 1到5片叶子连成一串
-          const stringLength = 1 + Math.floor(Math.random() * 5); // 1-5片
+          // 基于高度的颜色选择 - 顶部更亮，底部更深
+          const heightFactor = t; // 0=底部, 1=顶部
+          const colorIndex = Math.floor((1 - heightFactor * 0.6) * (greenColors.length - 1) + Math.random() * 2);
+          color = greenColors[Math.min(colorIndex, greenColors.length - 1)].clone();
+
+          // 外层针叶更亮（模拟阳光照射）
+          const edgeFactor = radius / maxRadius;
+          const lightVariation = edgeFactor * 0.12 + (Math.random() - 0.5) * 0.1;
+          color.offsetHSL(
+            (Math.random() - 0.5) * 0.03,  // 微小的色调变化
+            (Math.random() - 0.5) * 0.15,  // 饱和度变化
+            lightVariation                   // 亮度基于位置
+          );
+
+          // 更大的尺寸变化，创造层次感
+          const baseSize = 0.15 + Math.random() * 0.12;
+          size = baseSize * (0.8 + heightFactor * 0.4); // 顶部针叶略大
+
+          // 松针串连效果 - 2到6片叶子连成一串（更紧密的簇）
+          const stringLength = 2 + Math.floor(Math.random() * 5);
           const stringDir = new THREE.Vector3(
             (Math.random() - 0.5),
-            (Math.random() - 0.5) * 0.3,
+            (Math.random() - 0.5) * 0.4 - 0.1, // 略微向下倾斜
             (Math.random() - 0.5)
           ).normalize();
-          const spacing = 0.03 + Math.random() * 0.02; // 更紧密的叶子间距
+          const spacing = 0.025 + Math.random() * 0.02;
 
           for (let s = 0; s < stringLength && i < particleCount; s++) {
-            positions[i * 3] = baseX + stringDir.x * spacing * s;
-            positions[i * 3 + 1] = baseY + stringDir.y * spacing * s;
-            positions[i * 3 + 2] = baseZ + stringDir.z * spacing * s;
+            // 添加微小的随机偏移让针叶更自然
+            const jitter = 0.008;
+            positions[i * 3] = baseX + stringDir.x * spacing * s + (Math.random() - 0.5) * jitter;
+            positions[i * 3 + 1] = baseY + stringDir.y * spacing * s + (Math.random() - 0.5) * jitter;
+            positions[i * 3 + 2] = baseZ + stringDir.z * spacing * s + (Math.random() - 0.5) * jitter;
 
-            // 串连的叶子颜色略有变化但相近
+            // 串中的颜色渐变 - 尖端更浅
             const leafColor = color.clone();
-            leafColor.offsetHSL(0, 0, (Math.random() - 0.5) * 0.08);
+            const tipLightening = s / stringLength * 0.08;
+            leafColor.offsetHSL(0, -s * 0.02, tipLightening + (Math.random() - 0.5) * 0.05);
             colors[i * 3] = leafColor.r;
             colors[i * 3 + 1] = leafColor.g;
             colors[i * 3 + 2] = leafColor.b;
 
-            // 串中的叶子大小略有变化
-            sizes[i] = size * (0.9 + Math.random() * 0.2);
+            // 串中的叶子大小逐渐变小（向尖端）
+            sizes[i] = size * (1.1 - s * 0.15 / stringLength) * (0.9 + Math.random() * 0.2);
             particleTypes[i] = pType;
 
             treeParticleVelocities.push({
@@ -1221,30 +1292,33 @@
       geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
 
       const material = new THREE.PointsMaterial({
-        size: 0.18,
+        size: 0.28,
         map: pineNeedleTexture,
         vertexColors: true,
         transparent: true,
-        opacity: 0.95,
+        opacity: 0.92,
         blending: THREE.NormalBlending,
         sizeAttenuation: true,
-        depthWrite: false
+        depthWrite: false,
+        alphaTest: 0.01
       });
 
       treeParticles = new THREE.Points(geometry, material);
       treeGroup.add(treeParticles);
 
-      // 为每种装饰类型创建独立的实例化网格（支持随机倾斜）
+      // 为每种装饰类型创建独立的3D实例化网格
       const decorTypes = [
-        { type: 2, texture: bellTexture, size: 0.45, blend: THREE.NormalBlending, opacity: 0.95 }, // 铃铛
-        { type: 3, texture: ornamentTexture, size: 0.28, blend: THREE.AdditiveBlending, opacity: 0.9 }, // 装饰球
-        { type: 4, texture: candyCaneTexture, size: 0.38, blend: THREE.NormalBlending, opacity: 0.95 }, // 糖果拐杖
-        { type: 5, texture: ribbonTexture, size: 0.35, blend: THREE.NormalBlending, opacity: 0.9 }, // 蝴蝶结
-        { type: 6, texture: icicleTexture, size: 0.32, blend: THREE.AdditiveBlending, opacity: 0.85 }, // 冰柱
-        { type: 7, texture: snowflakeOrnamentTexture, size: 0.35, blend: THREE.AdditiveBlending, opacity: 0.9 } // 雪花
+        { type: 2, geo: 'bell', size: 0.12, color: 0xffd700 }, // 铃铛 - 3D
+        { type: 3, geo: 'sphere', size: 0.08, color: null }, // 装饰球 - 3D球体
+        { type: 4, geo: 'candycane', size: 0.15, color: 0xffffff }, // 糖果拐杖 - 3D
+        { type: 5, geo: 'ribbon', size: 0.1, color: null }, // 蝴蝶结 - 3D
+        { type: 6, geo: 'icicle', size: 0.12, color: 0xadd8e6 }, // 冰柱 - 3D
+        { type: 7, geo: 'snowflake', size: 0.1, color: 0xffffff } // 雪花 - 平面但小
       ];
 
       const dummy = new THREE.Object3D();
+      const ornamentColors = [0xdc143c, 0xffd700, 0x4169e1, 0x9932cc, 0x00aa00];
+      const ribbonColors = [0xdc143c, 0xffd700, 0x4169e1, 0xff69b4];
 
       decorTypes.forEach(decorType => {
         const typeParticles = [];
@@ -1256,53 +1330,118 @@
 
         if (typeParticles.length === 0) return;
 
-        // 使用平面几何体创建实例化网格
-        const planeGeo = new THREE.PlaneGeometry(decorType.size, decorType.size);
-        const planeMat = new THREE.MeshBasicMaterial({
-          map: decorType.texture,
-          transparent: true,
-          opacity: decorType.opacity,
-          blending: decorType.blend,
-          side: THREE.DoubleSide,
-          depthWrite: false
-        });
+        let geo, mat, useInstancedColor = false;
 
-        const instancedMesh = new THREE.InstancedMesh(planeGeo, planeMat, typeParticles.length);
+        // 根据类型创建不同的3D几何体
+        switch (decorType.geo) {
+          case 'bell':
+            // 铃铛 - 使用圆锥+球体组合的简化形状
+            geo = new THREE.ConeGeometry(decorType.size * 0.6, decorType.size, 8);
+            mat = new THREE.MeshStandardMaterial({
+              color: 0xffd700,
+              metalness: 0.8,
+              roughness: 0.2,
+              emissive: 0xaa8800,
+              emissiveIntensity: 0.2
+            });
+            break;
+          case 'sphere':
+            // 装饰球 - 真正的3D球体
+            geo = new THREE.SphereGeometry(decorType.size, 12, 8);
+            mat = new THREE.MeshStandardMaterial({
+              metalness: 0.4,
+              roughness: 0.3,
+              emissive: 0x111111,
+              emissiveIntensity: 0.3
+            });
+            useInstancedColor = true;
+            break;
+          case 'candycane':
+            // 糖果拐杖 - 弯曲的圆柱
+            geo = new THREE.TorusGeometry(decorType.size * 0.4, decorType.size * 0.12, 8, 12, Math.PI);
+            mat = new THREE.MeshStandardMaterial({
+              color: 0xffffff,
+              metalness: 0.1,
+              roughness: 0.4,
+              emissive: 0xffcccc,
+              emissiveIntensity: 0.1
+            });
+            break;
+          case 'ribbon':
+            // 蝴蝶结 - 两个压扁的球
+            geo = new THREE.SphereGeometry(decorType.size, 8, 6);
+            geo.scale(1.5, 0.5, 0.8);
+            mat = new THREE.MeshStandardMaterial({
+              metalness: 0.3,
+              roughness: 0.5,
+              emissive: 0x220000,
+              emissiveIntensity: 0.2
+            });
+            useInstancedColor = true;
+            break;
+          case 'icicle':
+            // 冰柱 - 细长的锥体
+            geo = new THREE.ConeGeometry(decorType.size * 0.15, decorType.size * 1.2, 6);
+            mat = new THREE.MeshStandardMaterial({
+              color: 0xadd8e6,
+              metalness: 0.1,
+              roughness: 0.1,
+              transparent: true,
+              opacity: 0.7,
+              emissive: 0x88ccff,
+              emissiveIntensity: 0.3
+            });
+            break;
+          case 'snowflake':
+            // 雪花 - 保持平面但更小
+            geo = new THREE.PlaneGeometry(decorType.size, decorType.size);
+            mat = new THREE.MeshBasicMaterial({
+              map: snowflakeOrnamentTexture,
+              transparent: true,
+              opacity: 0.9,
+              side: THREE.DoubleSide,
+              blending: THREE.AdditiveBlending,
+              depthWrite: false
+            });
+            break;
+        }
+
+        const instancedMesh = new THREE.InstancedMesh(geo, mat, typeParticles.length);
         instancedMesh.userData.isDecor = true;
         instancedMesh.userData.decorType = decorType.type;
         instancedMesh.userData.particleIndices = typeParticles;
         instancedMesh.userData.originalTransforms = [];
 
-        typeParticles.forEach((idx, i) => {
+        typeParticles.forEach((idx, j) => {
           const pos = treeParticleVelocities[idx].originalPos;
 
-          // 计算朝向树中心的基础方向
-          const toCenter = new THREE.Vector3(-pos[0], 0, -pos[2]).normalize();
-
-          // 随机倾斜角度 - 模拟挂在树枝上的效果
-          const tiltX = (Math.random() - 0.5) * 0.8; // 前后倾斜
-          const tiltY = Math.random() * Math.PI * 2; // 随机旋转
-          const tiltZ = (Math.random() - 0.5) * 0.6; // 左右倾斜
-
-          // 额外的挂垂效果 - 装饰物略微朝下
-          const hangAngle = Math.random() * 0.3 + 0.1;
+          // 随机倾斜角度
+          const tiltX = (Math.random() - 0.5) * 0.5;
+          const tiltY = Math.random() * Math.PI * 2;
+          const tiltZ = (Math.random() - 0.5) * 0.4;
+          const hangAngle = Math.random() * 0.2;
 
           dummy.position.set(pos[0], pos[1], pos[2]);
-
-          // 先面向树中心，然后添加随机倾斜
-          dummy.lookAt(0, pos[1], 0);
-          dummy.rotateX(hangAngle + tiltX);
-          dummy.rotateY(tiltY);
-          dummy.rotateZ(tiltZ);
+          dummy.rotation.set(hangAngle + tiltX, tiltY, tiltZ);
 
           // 随机大小变化
-          const scale = 0.8 + Math.random() * 0.4;
+          const scale = 0.7 + Math.random() * 0.5;
           dummy.scale.setScalar(scale);
 
           dummy.updateMatrix();
-          instancedMesh.setMatrixAt(i, dummy.matrix);
+          instancedMesh.setMatrixAt(j, dummy.matrix);
 
-          // 保存原始变换用于动画
+          // 为需要的类型设置实例颜色
+          if (useInstancedColor) {
+            let colorChoice;
+            if (decorType.geo === 'sphere') {
+              colorChoice = ornamentColors[Math.floor(Math.random() * ornamentColors.length)];
+            } else if (decorType.geo === 'ribbon') {
+              colorChoice = ribbonColors[Math.floor(Math.random() * ribbonColors.length)];
+            }
+            instancedMesh.setColorAt(j, new THREE.Color(colorChoice));
+          }
+
           instancedMesh.userData.originalTransforms.push({
             position: [...pos],
             rotation: [dummy.rotation.x, dummy.rotation.y, dummy.rotation.z],
@@ -1311,6 +1450,7 @@
         });
 
         instancedMesh.instanceMatrix.needsUpdate = true;
+        if (instancedMesh.instanceColor) instancedMesh.instanceColor.needsUpdate = true;
         treeGroup.add(instancedMesh);
       });
 
