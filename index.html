@@ -138,6 +138,7 @@
     let birdParticles = null;
     let pineNeedleTexture, pineConeTexture, bellTexture, ornamentTexture;
     let candyCaneTexture, ribbonTexture, icicleTexture, snowflakeOrnamentTexture;
+    let decorationMeshes = []; // 存储装饰物网格用于爆炸动画
 
     // 创建雪花纹理
     function createSnowflakeTexture() {
@@ -1118,7 +1119,7 @@
       treeGroup.add(trunk);
 
       // 粒子圣诞树 - 多层次纹理系统（更多松针，支持串连）
-      const particleCount = 8000; // 增加粒子数量
+      const particleCount = 12000; // 增加粒子数量 (1.5倍密度)
       const positions = new Float32Array(particleCount * 3);
       const colors = new Float32Array(particleCount * 3);
       const sizes = new Float32Array(particleCount);
@@ -1139,7 +1140,10 @@
 
       let i = 0;
       while (i < particleCount) {
-        const t = Math.random();
+        // 使用偏向底部的分布来补偿锥形树的形状
+        // 底部更宽需要更多粒子才能保持视觉密度均匀
+        const u = Math.random();
+        const t = 1 - Math.sqrt(1 - u); // 偏向底部分布
         const y = t * 5.2 + 0.3;
         const maxRadius = 2.2 * (1 - t * 0.88);
         const angle = Math.random() * Math.PI * 2;
@@ -1452,6 +1456,7 @@
         instancedMesh.instanceMatrix.needsUpdate = true;
         if (instancedMesh.instanceColor) instancedMesh.instanceColor.needsUpdate = true;
         treeGroup.add(instancedMesh);
+        decorationMeshes.push(instancedMesh);
       });
 
       // 华丽的星星
@@ -1641,11 +1646,121 @@
         treeParticleVelocities[i].targetPos = [targetX, targetY, targetZ];
       }
 
-      // 隐藏装饰
-      treeGroup.children.forEach(child => {
-        if (child !== treeParticles) {
-          child.visible = false;
+      // 初始化装饰物爆炸数据
+      const dummy = new THREE.Object3D();
+      decorationMeshes.forEach(mesh => {
+        if (!mesh.userData.explosionData) {
+          mesh.userData.explosionData = [];
         }
+        mesh.userData.explosionData = [];
+
+        const transforms = mesh.userData.originalTransforms;
+        for (let j = 0; j < transforms.length; j++) {
+          const orig = transforms[j];
+
+          // 计算爆炸目标位置
+          const screenAngle = Math.random() * Math.PI * 2;
+          const screenDist = 12 + Math.random() * 20;
+          const screenY = (Math.random() - 0.3) * 18;
+
+          const targetX = Math.cos(screenAngle) * screenDist;
+          const targetY = screenY;
+          const targetZ = Math.sin(screenAngle) * screenDist;
+
+          // 计算速度
+          const dx = targetX - orig.position[0];
+          const dy = targetY - orig.position[1];
+          const dz = targetZ - orig.position[2];
+          const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+          const speed = 12 + Math.random() * 8;
+
+          mesh.userData.explosionData.push({
+            velocity: [(dx / dist) * speed, (dy / dist) * speed, (dz / dist) * speed],
+            targetPos: [targetX, targetY, targetZ],
+            currentPos: [...orig.position],
+            currentRotation: [...orig.rotation],
+            currentScale: orig.scale,
+            spinSpeed: [(Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.3]
+          });
+        }
+      });
+
+      // 初始化星星爆炸数据
+      if (starGroup) {
+        const starPos = starGroup.position;
+
+        // 星星本体爆炸数据 - 向上飞出
+        starGroup.userData.explosionData = {
+          originalPos: { x: starPos.x, y: starPos.y, z: starPos.z },
+          velocity: { x: (Math.random() - 0.5) * 8, y: 15 + Math.random() * 5, z: (Math.random() - 0.5) * 8 },
+          spinSpeed: { x: 0.1, y: 0.15, z: 0.08 },
+          originalScale: 1
+        };
+
+        // 星芒粒子爆炸数据
+        const starRays = starGroup.children.find(c => c.userData.isStarRays);
+        if (starRays && starRays.userData.rayData) {
+          const rayPositions = starRays.geometry.attributes.position.array;
+          starRays.userData.rayData.forEach((data, i) => {
+            // 计算爆炸目标
+            const screenAngle = Math.random() * Math.PI * 2;
+            const screenDist = 8 + Math.random() * 15;
+            const screenY = 5 + Math.random() * 12;
+
+            data.explosionTarget = {
+              x: Math.cos(screenAngle) * screenDist,
+              y: screenY,
+              z: Math.sin(screenAngle) * screenDist
+            };
+
+            // 速度
+            const speed = 12 + Math.random() * 8;
+            const worldX = rayPositions[i * 3] + starPos.x;
+            const worldY = rayPositions[i * 3 + 1] + starPos.y;
+            const worldZ = rayPositions[i * 3 + 2] + starPos.z;
+
+            const dx = data.explosionTarget.x - worldX;
+            const dy = data.explosionTarget.y - worldY;
+            const dz = data.explosionTarget.z - worldZ;
+            const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+            data.explosionVelocity = {
+              x: (dx / dist) * speed,
+              y: (dy / dist) * speed,
+              z: (dz / dist) * speed
+            };
+
+            data.currentWorldPos = { x: worldX, y: worldY, z: worldZ };
+          });
+        }
+      }
+
+      // 初始化彩灯爆炸数据
+      treeLights.forEach(light => {
+        const pos = light.position;
+
+        // 计算爆炸目标位置
+        const screenAngle = Math.random() * Math.PI * 2;
+        const screenDist = 10 + Math.random() * 18;
+        const screenY = (Math.random() - 0.3) * 16;
+
+        const targetX = Math.cos(screenAngle) * screenDist;
+        const targetY = screenY;
+        const targetZ = Math.sin(screenAngle) * screenDist;
+
+        // 计算速度
+        const dx = targetX - pos.x;
+        const dy = targetY - pos.y;
+        const dz = targetZ - pos.z;
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        const speed = 10 + Math.random() * 8;
+
+        light.userData.explosionData = {
+          originalPos: { x: pos.x, y: pos.y, z: pos.z },
+          velocity: { x: (dx / dist) * speed, y: (dy / dist) * speed, z: (dz / dist) * speed },
+          targetPos: { x: targetX, y: targetY, z: targetZ },
+          spinSpeed: { x: (Math.random() - 0.5) * 0.4, y: (Math.random() - 0.5) * 0.4, z: (Math.random() - 0.5) * 0.4 }
+        };
       });
 
       // 照片网格布局 - 放大显示，占满更多屏幕
@@ -1714,13 +1829,111 @@
         colors[i * 3 + 2] = origColor[2];
         sizes[i] = treeParticleVelocities[i].originalSize;
         treeParticleVelocities[i].velocity = [0, 0, 0];
+        // 清理临时数据
+        delete treeParticleVelocities[i].shrinkStartPos;
+        delete treeParticleVelocities[i].shrinkStartColor;
+        delete treeParticleVelocities[i].shrinkStartSize;
+        delete treeParticleVelocities[i].targetPos;
+        delete treeParticleVelocities[i].floatBasePos;
       }
 
       treeParticles.geometry.attributes.position.needsUpdate = true;
       treeParticles.geometry.attributes.color.needsUpdate = true;
       treeParticles.geometry.attributes.size.needsUpdate = true;
       treeParticles.material.opacity = 1;
-      treeParticles.material.size = 0.15;
+      treeParticles.material.size = 0.28;
+
+      // 恢复装饰物到原始位置
+      const rebuildDummy = new THREE.Object3D();
+      decorationMeshes.forEach(mesh => {
+        const originalTransforms = mesh.userData.originalTransforms;
+        if (!originalTransforms) return;
+
+        for (let j = 0; j < originalTransforms.length; j++) {
+          const orig = originalTransforms[j];
+          rebuildDummy.position.set(orig.position[0], orig.position[1], orig.position[2]);
+          rebuildDummy.rotation.set(orig.rotation[0], orig.rotation[1], orig.rotation[2]);
+          rebuildDummy.scale.setScalar(orig.scale);
+          rebuildDummy.updateMatrix();
+          mesh.setMatrixAt(j, rebuildDummy.matrix);
+        }
+        mesh.instanceMatrix.needsUpdate = true;
+
+        // 清理爆炸数据
+        if (mesh.userData.explosionData) {
+          mesh.userData.explosionData.forEach(data => {
+            delete data.shrinkStartPos;
+            delete data.shrinkStartRotation;
+            delete data.shrinkStartScale;
+            delete data.floatBasePos;
+            delete data.floatBaseRotation;
+          });
+          mesh.userData.explosionData = [];
+        }
+      });
+
+      // 重置彩灯位置
+      treeLights.forEach(light => {
+        const data = light.userData.explosionData;
+        if (data && data.originalPos) {
+          light.position.set(data.originalPos.x, data.originalPos.y, data.originalPos.z);
+          light.rotation.set(0, 0, 0);
+          light.scale.setScalar(1);
+          light.material.emissiveIntensity = 1;
+        }
+        // 清理爆炸数据
+        delete light.userData.explosionData;
+      });
+
+      // 重置星星
+      if (starGroup && starGroup.userData.explosionData) {
+        const starData = starGroup.userData.explosionData;
+
+        // 重置位置、旋转、大小
+        starGroup.position.set(starData.originalPos.x, starData.originalPos.y, starData.originalPos.z);
+        starGroup.rotation.set(0, 0, 0);
+        starGroup.scale.setScalar(1);
+
+        // 重置星芒粒子
+        const starRays = starGroup.children.find(c => c.userData.isStarRays);
+        if (starRays && starRays.userData.rayData) {
+          const rayPositions = starRays.geometry.attributes.position.array;
+          const raySizes = starRays.geometry.attributes.size.array;
+          const rayColors = starRays.geometry.attributes.color.array;
+
+          starRays.userData.rayData.forEach((data, i) => {
+            // 重置位置
+            rayPositions[i * 3] = data.originalPos[0];
+            rayPositions[i * 3 + 1] = data.originalPos[1];
+            rayPositions[i * 3 + 2] = data.originalPos[2];
+
+            // 重置大小
+            raySizes[i] = data.baseSize;
+
+            // 重置颜色为金色
+            const brightness = 1 - Math.sqrt(data.originalPos[0] ** 2 + data.originalPos[2] ** 2) / 2;
+            rayColors[i * 3] = 1;
+            rayColors[i * 3 + 1] = 0.7 + brightness * 0.3;
+            rayColors[i * 3 + 2] = 0.2 + brightness * 0.3;
+
+            // 清理爆炸数据
+            delete data.explosionTarget;
+            delete data.explosionVelocity;
+            delete data.currentWorldPos;
+            delete data.floatBaseWorldPos;
+            delete data.shrinkStartWorldPos;
+          });
+
+          starRays.geometry.attributes.position.needsUpdate = true;
+          starRays.geometry.attributes.size.needsUpdate = true;
+          starRays.geometry.attributes.color.needsUpdate = true;
+        }
+
+        // 清理爆炸数据
+        delete starGroup.userData.explosionData;
+      }
+
+      if (starGroup) starGroup.visible = true;
 
       treeGroup.children.forEach(child => {
         child.visible = true;
@@ -2002,7 +2215,8 @@
             const group = new THREE.Group();
 
             // 背板 - 木质纹理（双面：正面深色，背面木色）
-            const backplateGeo = new THREE.BoxGeometry(frameWidth + 0.02, frameHeight + 0.02, 0.025);
+            // 加厚背板以完全遮挡边框背面
+            const backplateGeo = new THREE.BoxGeometry(frameWidth + 0.02, frameHeight + 0.02, 0.06);
 
             // 木质背面材质
             const woodBackMat = new THREE.MeshStandardMaterial({
@@ -2026,12 +2240,12 @@
               woodBackMat  // 背面（木色）
             ];
             const backplate = new THREE.Mesh(backplateGeo, backplateMaterials);
-            backplate.position.z = -0.018;
+            backplate.position.z = -0.03; // 调整位置让正面对齐
             group.add(backplate);
 
             // 照片
             const photoGeo = new THREE.PlaneGeometry(photoWidth, photoHeight);
-            const photoMat = new THREE.MeshStandardMaterial({ map: texture, side: THREE.DoubleSide });
+            const photoMat = new THREE.MeshStandardMaterial({ map: texture, side: THREE.FrontSide });
             const photoMesh = new THREE.Mesh(photoGeo, photoMat);
             photoMesh.position.z = 0.001;
             group.add(photoMesh);
@@ -2042,7 +2256,8 @@
               metalness: 0.85,
               roughness: 0.2,
               emissive: 0xb8860b,
-              emissiveIntensity: 0.15
+              emissiveIntensity: 0.15,
+              side: THREE.FrontSide
             });
 
             // 上边框
@@ -2083,7 +2298,8 @@
               metalness: 0.9,
               roughness: 0.15,
               emissive: 0xffc700,
-              emissiveIntensity: 0.25
+              emissiveIntensity: 0.25,
+              side: THREE.FrontSide
             });
 
             const cornerPositions = [
@@ -2106,7 +2322,8 @@
               roughness: 0.6,
               metalness: 0.1,
               emissive: 0x880000,
-              emissiveIntensity: 0.1
+              emissiveIntensity: 0.1,
+              side: THREE.FrontSide
             });
 
             // 蝴蝶结左翼
@@ -2141,7 +2358,8 @@
             const stringMat = new THREE.MeshStandardMaterial({
               color: 0xffd700,
               metalness: 0.7,
-              roughness: 0.3
+              roughness: 0.3,
+              side: THREE.FrontSide
             });
             const string = new THREE.Mesh(
               new THREE.TorusGeometry(0.04, 0.008, 8, 16, Math.PI),
@@ -2161,9 +2379,10 @@
             // 计算树表面的倾斜角度（锥形表面）
             const slopeAngle = Math.atan2(2.2 * 0.88, 5); // 树的倾斜角
 
-            // 让照片面朝树中心（面向内）
-            group.lookAt(0, y, 0); // 朝向树中心
-            group.rotateX(slopeAngle * 0.5); // 轻微向上倾斜
+            // 让照片面朝外（背对树中心）
+            group.lookAt(0, y, 0); // 先朝向树中心
+            group.rotateY(Math.PI); // 翻转180度，面朝外
+            group.rotateX(slopeAngle * 0.3); // 轻微向上倾斜（跟随树的锥形）
             group.rotateZ((Math.random() - 0.5) * 0.15); // 随机轻微倾斜
 
             group.userData.baseY = position[1];
@@ -2603,17 +2822,142 @@
             sizes[i] = treeParticleVelocities[i].originalSize * (1 + phase * 2);
           }
           treeParticles.material.size = 0.2 + phase * 0.3;
+
+          // 装饰物爆炸动画 - 阶段1
+          const decorDummy = new THREE.Object3D();
+          decorationMeshes.forEach(mesh => {
+            const explosionData = mesh.userData.explosionData;
+            if (!explosionData) return;
+
+            for (let j = 0; j < explosionData.length; j++) {
+              const data = explosionData[j];
+
+              // 移动
+              data.currentPos[0] += data.velocity[0] * 0.016;
+              data.currentPos[1] += data.velocity[1] * 0.016;
+              data.currentPos[2] += data.velocity[2] * 0.016;
+
+              // 减速
+              data.velocity[0] *= 0.97;
+              data.velocity[1] *= 0.97;
+              data.velocity[2] *= 0.97;
+
+              // 旋转
+              data.currentRotation[0] += data.spinSpeed[0];
+              data.currentRotation[1] += data.spinSpeed[1];
+              data.currentRotation[2] += data.spinSpeed[2];
+
+              // 更新矩阵
+              decorDummy.position.set(data.currentPos[0], data.currentPos[1], data.currentPos[2]);
+              decorDummy.rotation.set(data.currentRotation[0], data.currentRotation[1], data.currentRotation[2]);
+              decorDummy.scale.setScalar(data.currentScale * (1 + phase * 0.5));
+              decorDummy.updateMatrix();
+              mesh.setMatrixAt(j, decorDummy.matrix);
+            }
+            mesh.instanceMatrix.needsUpdate = true;
+          });
+
+          // 彩灯爆炸动画 - 阶段1
+          treeLights.forEach(light => {
+            const data = light.userData.explosionData;
+            if (!data) return;
+
+            // 移动
+            light.position.x += data.velocity.x * 0.016;
+            light.position.y += data.velocity.y * 0.016;
+            light.position.z += data.velocity.z * 0.016;
+
+            // 减速
+            data.velocity.x *= 0.97;
+            data.velocity.y *= 0.97;
+            data.velocity.z *= 0.97;
+
+            // 旋转
+            light.rotation.x += data.spinSpeed.x;
+            light.rotation.y += data.spinSpeed.y;
+            light.rotation.z += data.spinSpeed.z;
+
+            // 放大
+            const scale = 1 + phase * 0.8;
+            light.scale.setScalar(scale);
+          });
+
+          // 星星爆炸动画 - 阶段1
+          if (starGroup && starGroup.userData.explosionData) {
+            const starData = starGroup.userData.explosionData;
+
+            // 星星本体移动
+            starGroup.position.x += starData.velocity.x * 0.016;
+            starGroup.position.y += starData.velocity.y * 0.016;
+            starGroup.position.z += starData.velocity.z * 0.016;
+
+            // 减速
+            starData.velocity.x *= 0.96;
+            starData.velocity.y *= 0.96;
+            starData.velocity.z *= 0.96;
+
+            // 旋转
+            starGroup.rotation.x += starData.spinSpeed.x;
+            starGroup.rotation.y += starData.spinSpeed.y;
+            starGroup.rotation.z += starData.spinSpeed.z;
+
+            // 放大并发光
+            const scale = 1 + phase * 1.5;
+            starGroup.scale.setScalar(scale);
+
+            // 星芒粒子爆炸
+            const starRays = starGroup.children.find(c => c.userData.isStarRays);
+            if (starRays && starRays.userData.rayData) {
+              const rayPositions = starRays.geometry.attributes.position.array;
+              const raySizes = starRays.geometry.attributes.size.array;
+
+              starRays.userData.rayData.forEach((data, i) => {
+                if (!data.explosionVelocity) return;
+
+                // 移动粒子（相对于星星组的本地坐标）
+                data.currentWorldPos.x += data.explosionVelocity.x * 0.016;
+                data.currentWorldPos.y += data.explosionVelocity.y * 0.016;
+                data.currentWorldPos.z += data.explosionVelocity.z * 0.016;
+
+                // 减速
+                data.explosionVelocity.x *= 0.97;
+                data.explosionVelocity.y *= 0.97;
+                data.explosionVelocity.z *= 0.97;
+
+                // 转换回本地坐标
+                rayPositions[i * 3] = data.currentWorldPos.x - starGroup.position.x;
+                rayPositions[i * 3 + 1] = data.currentWorldPos.y - starGroup.position.y;
+                rayPositions[i * 3 + 2] = data.currentWorldPos.z - starGroup.position.z;
+
+                // 放大粒子
+                raySizes[i] = data.baseSize * (1 + phase * 2);
+              });
+
+              starRays.geometry.attributes.position.needsUpdate = true;
+              starRays.geometry.attributes.size.needsUpdate = true;
+            }
+          }
         }
         // 阶段2: 全屏展示 + 闪烁 (2-5秒)
         else if (elapsed < 5) {
           const phase = (elapsed - 2) / 3;
           for (let i = 0; i < treeParticleVelocities.length; i++) {
-            const twinkle = treeParticleVelocities[i].twinkle;
+            const data = treeParticleVelocities[i];
+            const twinkle = data.twinkle;
 
-            // 轻微漂浮
-            positions[i * 3] += Math.sin(time * 2 + twinkle) * 0.02;
-            positions[i * 3 + 1] += Math.cos(time * 1.5 + twinkle) * 0.015;
-            positions[i * 3 + 2] += Math.sin(time * 1.8 + twinkle * 2) * 0.02;
+            // 记录漂浮基准位置（仅在阶段开始时）
+            if (!data.floatBasePos) {
+              data.floatBasePos = [
+                positions[i * 3],
+                positions[i * 3 + 1],
+                positions[i * 3 + 2]
+              ];
+            }
+
+            // 围绕基准位置轻微漂浮（不累加）
+            positions[i * 3] = data.floatBasePos[0] + Math.sin(time * 2 + twinkle) * 0.5;
+            positions[i * 3 + 1] = data.floatBasePos[1] + Math.cos(time * 1.5 + twinkle) * 0.4;
+            positions[i * 3 + 2] = data.floatBasePos[2] + Math.sin(time * 1.8 + twinkle * 2) * 0.5;
 
             // 闪烁颜色
             const sparkle = 0.5 + 0.5 * Math.sin(time * 8 + twinkle * 5);
@@ -2624,33 +2968,317 @@
             colors[i * 3 + 2] = color.b;
 
             // 大小脉动
-            sizes[i] = treeParticleVelocities[i].originalSize * (2 + Math.sin(time * 5 + twinkle) * 0.5);
+            sizes[i] = data.originalSize * (2 + Math.sin(time * 5 + twinkle) * 0.5);
           }
           treeParticles.material.size = 0.4 + Math.sin(time * 3) * 0.1;
+
+          // 装饰物漂浮动画 - 阶段2
+          const decorDummy2 = new THREE.Object3D();
+          decorationMeshes.forEach((mesh, meshIdx) => {
+            const explosionData = mesh.userData.explosionData;
+            if (!explosionData) return;
+
+            for (let j = 0; j < explosionData.length; j++) {
+              const data = explosionData[j];
+              const floatOffset = meshIdx * 0.5 + j * 0.3;
+
+              // 记录漂浮基准位置（仅在阶段开始时）
+              if (!data.floatBasePos) {
+                data.floatBasePos = [...data.currentPos];
+                data.floatBaseRotation = [...data.currentRotation];
+              }
+
+              // 围绕基准位置轻微漂浮（不累加）
+              const floatX = data.floatBasePos[0] + Math.sin(time * 2 + floatOffset) * 0.5;
+              const floatY = data.floatBasePos[1] + Math.cos(time * 1.5 + floatOffset) * 0.4;
+              const floatZ = data.floatBasePos[2] + Math.sin(time * 1.8 + floatOffset * 2) * 0.5;
+
+              // 围绕基准旋转轻微摆动
+              const rotX = data.floatBaseRotation[0] + Math.sin(time * 1.5 + floatOffset) * 0.2;
+              const rotY = data.floatBaseRotation[1] + time * 0.5;
+              const rotZ = data.floatBaseRotation[2] + Math.cos(time * 1.2 + floatOffset) * 0.2;
+
+              // 脉动大小
+              const pulse = 1 + Math.sin(time * 4 + floatOffset) * 0.15;
+
+              decorDummy2.position.set(floatX, floatY, floatZ);
+              decorDummy2.rotation.set(rotX, rotY, rotZ);
+              decorDummy2.scale.setScalar(data.currentScale * 1.5 * pulse);
+              decorDummy2.updateMatrix();
+              mesh.setMatrixAt(j, decorDummy2.matrix);
+            }
+            mesh.instanceMatrix.needsUpdate = true;
+          });
+
+          // 彩灯漂浮动画 - 阶段2
+          treeLights.forEach((light, idx) => {
+            const data = light.userData.explosionData;
+            if (!data) return;
+
+            // 记录漂浮基准位置
+            if (!data.floatBasePos) {
+              data.floatBasePos = { x: light.position.x, y: light.position.y, z: light.position.z };
+            }
+
+            const floatOffset = idx * 0.4;
+
+            // 围绕基准位置漂浮
+            light.position.x = data.floatBasePos.x + Math.sin(time * 2 + floatOffset) * 0.4;
+            light.position.y = data.floatBasePos.y + Math.cos(time * 1.5 + floatOffset) * 0.3;
+            light.position.z = data.floatBasePos.z + Math.sin(time * 1.8 + floatOffset * 2) * 0.4;
+
+            // 缓慢旋转
+            light.rotation.y += 0.02;
+
+            // 脉动大小
+            const pulse = 1.8 + Math.sin(time * 4 + floatOffset) * 0.3;
+            light.scale.setScalar(pulse);
+
+            // 闪烁发光
+            const glowIntensity = 1 + Math.sin(time * 6 + floatOffset) * 0.5;
+            light.material.emissiveIntensity = glowIntensity;
+          });
+
+          // 星星漂浮动画 - 阶段2
+          if (starGroup && starGroup.userData.explosionData) {
+            const starData = starGroup.userData.explosionData;
+
+            // 记录漂浮基准位置
+            if (!starData.floatBasePos) {
+              starData.floatBasePos = { x: starGroup.position.x, y: starGroup.position.y, z: starGroup.position.z };
+            }
+
+            // 星星缓慢漂浮
+            starGroup.position.x = starData.floatBasePos.x + Math.sin(time * 1.5) * 0.5;
+            starGroup.position.y = starData.floatBasePos.y + Math.cos(time * 1.2) * 0.4;
+            starGroup.position.z = starData.floatBasePos.z + Math.sin(time * 1.8) * 0.5;
+
+            // 缓慢旋转
+            starGroup.rotation.y += 0.03;
+            starGroup.rotation.x = Math.sin(time * 0.8) * 0.2;
+
+            // 脉动大小
+            const pulse = 2.5 + Math.sin(time * 3) * 0.4;
+            starGroup.scale.setScalar(pulse);
+
+            // 星芒粒子漂浮
+            const starRays = starGroup.children.find(c => c.userData.isStarRays);
+            if (starRays && starRays.userData.rayData) {
+              const rayPositions = starRays.geometry.attributes.position.array;
+              const raySizes = starRays.geometry.attributes.size.array;
+              const rayColors = starRays.geometry.attributes.color.array;
+
+              starRays.userData.rayData.forEach((data, i) => {
+                if (!data.floatBaseWorldPos) {
+                  data.floatBaseWorldPos = { ...data.currentWorldPos };
+                }
+
+                // 漂浮
+                const floatOffset = i * 0.1;
+                const floatX = data.floatBaseWorldPos.x + Math.sin(time * 2 + floatOffset) * 0.3;
+                const floatY = data.floatBaseWorldPos.y + Math.cos(time * 1.5 + floatOffset) * 0.25;
+                const floatZ = data.floatBaseWorldPos.z + Math.sin(time * 1.8 + floatOffset) * 0.3;
+
+                // 转换回本地坐标
+                rayPositions[i * 3] = floatX - starGroup.position.x;
+                rayPositions[i * 3 + 1] = floatY - starGroup.position.y;
+                rayPositions[i * 3 + 2] = floatZ - starGroup.position.z;
+
+                // 闪烁大小和颜色
+                const sparkle = 0.5 + 0.5 * Math.sin(time * 8 + floatOffset * 3);
+                raySizes[i] = data.baseSize * (2 + sparkle);
+
+                // 彩虹色变化
+                const hue = (i / starRays.userData.rayData.length + time * 0.2) % 1;
+                const color = new THREE.Color().setHSL(hue, 0.8, 0.6 + sparkle * 0.3);
+                rayColors[i * 3] = color.r;
+                rayColors[i * 3 + 1] = color.g;
+                rayColors[i * 3 + 2] = color.b;
+              });
+
+              starRays.geometry.attributes.position.needsUpdate = true;
+              starRays.geometry.attributes.size.needsUpdate = true;
+              starRays.geometry.attributes.color.needsUpdate = true;
+            }
+          }
         }
-        // 阶段3: 收缩回树形 (5-7秒)
-        else if (elapsed < 7) {
-          const phase = (elapsed - 5) / 2;
+        // 阶段3: 收缩回树形 (5-8秒) - 延长时间确保完全收敛
+        else if (elapsed < 8) {
+          const phase = (elapsed - 5) / 3;
           const easePhase = 1 - Math.pow(1 - phase, 3); // ease out cubic
 
           for (let i = 0; i < treeParticleVelocities.length; i++) {
             const orig = treeParticleVelocities[i].originalPos;
             const origColor = treeParticleVelocities[i].originalColor;
+            const data = treeParticleVelocities[i];
 
-            // 向原位置收缩
-            positions[i * 3] += (orig[0] - positions[i * 3]) * 0.05;
-            positions[i * 3 + 1] += (orig[1] - positions[i * 3 + 1]) * 0.05;
-            positions[i * 3 + 2] += (orig[2] - positions[i * 3 + 2]) * 0.05;
+            // 记录收缩开始时的位置（仅在阶段开始时记录一次）
+            if (!data.shrinkStartPos) {
+              // 使用floatBasePos作为起点（如果存在），否则用当前位置
+              data.shrinkStartPos = data.floatBasePos ? [...data.floatBasePos] : [
+                positions[i * 3],
+                positions[i * 3 + 1],
+                positions[i * 3 + 2]
+              ];
+              data.shrinkStartColor = [
+                colors[i * 3],
+                colors[i * 3 + 1],
+                colors[i * 3 + 2]
+              ];
+              data.shrinkStartSize = sizes[i];
+            }
 
-            // 颜色恢复
-            colors[i * 3] += (origColor[0] - colors[i * 3]) * 0.08;
-            colors[i * 3 + 1] += (origColor[1] - colors[i * 3 + 1]) * 0.08;
-            colors[i * 3 + 2] += (origColor[2] - colors[i * 3 + 2]) * 0.08;
+            // 使用easePhase进行平滑插值 - 保证完全收敛到原位置
+            positions[i * 3] = data.shrinkStartPos[0] + (orig[0] - data.shrinkStartPos[0]) * easePhase;
+            positions[i * 3 + 1] = data.shrinkStartPos[1] + (orig[1] - data.shrinkStartPos[1]) * easePhase;
+            positions[i * 3 + 2] = data.shrinkStartPos[2] + (orig[2] - data.shrinkStartPos[2]) * easePhase;
 
-            // 大小恢复
-            sizes[i] += (treeParticleVelocities[i].originalSize - sizes[i]) * 0.08;
+            // 颜色平滑恢复
+            colors[i * 3] = data.shrinkStartColor[0] + (origColor[0] - data.shrinkStartColor[0]) * easePhase;
+            colors[i * 3 + 1] = data.shrinkStartColor[1] + (origColor[1] - data.shrinkStartColor[1]) * easePhase;
+            colors[i * 3 + 2] = data.shrinkStartColor[2] + (origColor[2] - data.shrinkStartColor[2]) * easePhase;
+
+            // 大小平滑恢复
+            sizes[i] = data.shrinkStartSize + (data.originalSize - data.shrinkStartSize) * easePhase;
           }
-          treeParticles.material.size = 0.4 - phase * 0.25;
+          treeParticles.material.size = 0.4 - easePhase * 0.12; // 从0.4平滑过渡到0.28
+
+          // 装饰物收缩动画 - 阶段3
+          const decorDummy3 = new THREE.Object3D();
+          decorationMeshes.forEach(mesh => {
+            const explosionData = mesh.userData.explosionData;
+            const originalTransforms = mesh.userData.originalTransforms;
+            if (!explosionData || !originalTransforms) return;
+
+            for (let j = 0; j < explosionData.length; j++) {
+              const data = explosionData[j];
+              const orig = originalTransforms[j];
+
+              // 记录收缩开始位置（仅在阶段开始时）
+              if (!data.shrinkStartPos) {
+                // 使用floatBasePos作为起点（如果存在），否则用currentPos
+                data.shrinkStartPos = data.floatBasePos ? [...data.floatBasePos] : [...data.currentPos];
+                data.shrinkStartRotation = data.floatBaseRotation ? [...data.floatBaseRotation] : [...data.currentRotation];
+                data.shrinkStartScale = data.currentScale * 1.5; // 阶段2结束时的放大尺寸
+              }
+
+              // 平滑插值回原始位置
+              const posX = data.shrinkStartPos[0] + (orig.position[0] - data.shrinkStartPos[0]) * easePhase;
+              const posY = data.shrinkStartPos[1] + (orig.position[1] - data.shrinkStartPos[1]) * easePhase;
+              const posZ = data.shrinkStartPos[2] + (orig.position[2] - data.shrinkStartPos[2]) * easePhase;
+
+              // 平滑插值回原始旋转
+              const rotX = data.shrinkStartRotation[0] + (orig.rotation[0] - data.shrinkStartRotation[0]) * easePhase;
+              const rotY = data.shrinkStartRotation[1] + (orig.rotation[1] - data.shrinkStartRotation[1]) * easePhase;
+              const rotZ = data.shrinkStartRotation[2] + (orig.rotation[2] - data.shrinkStartRotation[2]) * easePhase;
+
+              // 平滑插值回原始大小
+              const scale = data.shrinkStartScale + (orig.scale - data.shrinkStartScale) * easePhase;
+
+              decorDummy3.position.set(posX, posY, posZ);
+              decorDummy3.rotation.set(rotX, rotY, rotZ);
+              decorDummy3.scale.setScalar(scale);
+              decorDummy3.updateMatrix();
+              mesh.setMatrixAt(j, decorDummy3.matrix);
+            }
+            mesh.instanceMatrix.needsUpdate = true;
+          });
+
+          // 彩灯收缩动画 - 阶段3
+          treeLights.forEach(light => {
+            const data = light.userData.explosionData;
+            if (!data) return;
+
+            // 记录收缩开始位置
+            if (!data.shrinkStartPos) {
+              data.shrinkStartPos = data.floatBasePos ? { ...data.floatBasePos } : { x: light.position.x, y: light.position.y, z: light.position.z };
+              data.shrinkStartScale = light.scale.x;
+            }
+
+            // 平滑插值回原始位置
+            light.position.x = data.shrinkStartPos.x + (data.originalPos.x - data.shrinkStartPos.x) * easePhase;
+            light.position.y = data.shrinkStartPos.y + (data.originalPos.y - data.shrinkStartPos.y) * easePhase;
+            light.position.z = data.shrinkStartPos.z + (data.originalPos.z - data.shrinkStartPos.z) * easePhase;
+
+            // 平滑插值回原始大小
+            const scale = data.shrinkStartScale + (1 - data.shrinkStartScale) * easePhase;
+            light.scale.setScalar(scale);
+
+            // 旋转归零
+            light.rotation.x *= (1 - easePhase);
+            light.rotation.z *= (1 - easePhase);
+
+            // 发光恢复正常
+            light.material.emissiveIntensity = 1;
+          });
+
+          // 星星收缩动画 - 阶段3
+          if (starGroup && starGroup.userData.explosionData) {
+            const starData = starGroup.userData.explosionData;
+
+            // 记录收缩开始位置
+            if (!starData.shrinkStartPos) {
+              starData.shrinkStartPos = starData.floatBasePos ? { ...starData.floatBasePos } : { x: starGroup.position.x, y: starGroup.position.y, z: starGroup.position.z };
+              starData.shrinkStartScale = starGroup.scale.x;
+              starData.shrinkStartRotation = { x: starGroup.rotation.x, y: starGroup.rotation.y, z: starGroup.rotation.z };
+            }
+
+            // 平滑插值回原始位置
+            starGroup.position.x = starData.shrinkStartPos.x + (starData.originalPos.x - starData.shrinkStartPos.x) * easePhase;
+            starGroup.position.y = starData.shrinkStartPos.y + (starData.originalPos.y - starData.shrinkStartPos.y) * easePhase;
+            starGroup.position.z = starData.shrinkStartPos.z + (starData.originalPos.z - starData.shrinkStartPos.z) * easePhase;
+
+            // 平滑插值回原始大小
+            const scale = starData.shrinkStartScale + (1 - starData.shrinkStartScale) * easePhase;
+            starGroup.scale.setScalar(scale);
+
+            // 旋转归零
+            starGroup.rotation.x = starData.shrinkStartRotation.x * (1 - easePhase);
+            starGroup.rotation.y = starData.shrinkStartRotation.y * (1 - easePhase);
+            starGroup.rotation.z = starData.shrinkStartRotation.z * (1 - easePhase);
+
+            // 星芒粒子收缩
+            const starRays = starGroup.children.find(c => c.userData.isStarRays);
+            if (starRays && starRays.userData.rayData) {
+              const rayPositions = starRays.geometry.attributes.position.array;
+              const raySizes = starRays.geometry.attributes.size.array;
+              const rayColors = starRays.geometry.attributes.color.array;
+
+              starRays.userData.rayData.forEach((data, i) => {
+                if (!data.shrinkStartWorldPos) {
+                  data.shrinkStartWorldPos = data.floatBaseWorldPos ? { ...data.floatBaseWorldPos } : { ...data.currentWorldPos };
+                }
+
+                // 计算原始世界位置
+                const origWorldX = data.originalPos[0] + starData.originalPos.x;
+                const origWorldY = data.originalPos[1] + starData.originalPos.y;
+                const origWorldZ = data.originalPos[2] + starData.originalPos.z;
+
+                // 平滑插值
+                const worldX = data.shrinkStartWorldPos.x + (origWorldX - data.shrinkStartWorldPos.x) * easePhase;
+                const worldY = data.shrinkStartWorldPos.y + (origWorldY - data.shrinkStartWorldPos.y) * easePhase;
+                const worldZ = data.shrinkStartWorldPos.z + (origWorldZ - data.shrinkStartWorldPos.z) * easePhase;
+
+                // 转换回本地坐标
+                rayPositions[i * 3] = worldX - starGroup.position.x;
+                rayPositions[i * 3 + 1] = worldY - starGroup.position.y;
+                rayPositions[i * 3 + 2] = worldZ - starGroup.position.z;
+
+                // 大小恢复
+                raySizes[i] = data.baseSize * (3 - easePhase * 2);
+
+                // 颜色恢复金色
+                const brightness = 1 - Math.sqrt(data.originalPos[0] ** 2 + data.originalPos[2] ** 2) / 2;
+                rayColors[i * 3] = 1;
+                rayColors[i * 3 + 1] = 0.7 + brightness * 0.3;
+                rayColors[i * 3 + 2] = 0.2 + brightness * 0.3;
+              });
+
+              starRays.geometry.attributes.position.needsUpdate = true;
+              starRays.geometry.attributes.size.needsUpdate = true;
+              starRays.geometry.attributes.color.needsUpdate = true;
+            }
+          }
         }
         // 完成
         else {
