@@ -2440,6 +2440,49 @@
 
           for (let i = 0; i < vel.length; i++) {
             const v = vel[i];
+            
+            // 树爆炸时的行为：所有火花一同炸开
+            if (isTreeExploding) {
+               const x = pos[i * 3];
+               const y = pos[i * 3 + 1];
+               const z = pos[i * 3 + 2];
+               const dist = Math.sqrt(x*x + z*z);
+               const dirX = x / (dist || 1);
+               const dirZ = z / (dist || 1);
+               // 强烈的向外斥力
+               pos[i * 3] += dirX * 0.5;
+               pos[i * 3 + 1] += (Math.random() - 0.5) * 0.5;
+               pos[i * 3 + 2] += dirZ * 0.5;
+               // 快速淡出
+               burst.material.opacity *= 0.95;
+               continue;
+            }
+
+            // 正常引力效果 ( gravitized on the tree )
+            if (burstElapsed > 1.0) {
+                // 吸引向树的圆锥体表面
+                const currentY = pos[i * 3 + 1];
+                // 树的半径估计
+                const treeR = Math.max(0, 2.5 * (1 - (currentY / 6))); 
+                const currentR = Math.sqrt(pos[i * 3]**2 + pos[i * 3 + 2]**2);
+                
+                if (currentY > 0 && currentY < 6) {
+                    // 向树中心吸附
+                    const factor = 0.05;
+                    pos[i * 3] += (0 - pos[i * 3]) * factor * 0.1; // X轴吸向中心
+                    pos[i * 3 + 2] += (0 - pos[i * 3 + 2]) * factor * 0.1; // Z轴吸向中心
+                    
+                    // 如果接近树表面，减速并停留在那里
+                    if (Math.abs(currentR - treeR) < 0.5) {
+                        v.x *= 0.8;
+                        v.y *= 0.8;
+                        v.z *= 0.8;
+                        // 抵消重力，使其悬浮
+                        v.y += 0.015; 
+                    }
+                }
+            }
+
             // 应用阻力
             v.x *= v.drag;
             v.y *= v.drag;
@@ -2453,8 +2496,13 @@
           }
           burst.geometry.attributes.position.needsUpdate = true;
 
-          // 闪烁和淡出
-          const fade = Math.max(0, 1 - burstElapsed / 2.5);
+          // 闪烁和淡出 - 如果被吸引到树上，延长寿命
+          let fade = Math.max(0, 1 - burstElapsed / 2.5);
+          if (!isTreeExploding && burstElapsed > 1.5) {
+              // 附着在树上时保持微弱发光
+              fade = Math.max(fade, 0.3 + 0.2 * Math.sin(now * 0.005)); 
+          }
+          
           const twinkle = 0.7 + 0.3 * Math.sin(burstElapsed * 15);
           burst.material.opacity = fade * twinkle;
           burst.material.size = (burst.userData.type === 'core' ? 0.25 : 0.18) * (0.5 + fade * 0.5);

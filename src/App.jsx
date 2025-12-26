@@ -9,6 +9,7 @@ import SnowEffect from './components/SnowEffect'
 function App() {
   const [photos, setPhotos] = useState([])
   const [isRotating, setIsRotating] = useState(true)
+  const [isTreeExploded, setIsTreeExploded] = useState(false)
   const [explosions, setExplosions] = useState([])
   const fileInputRef = useRef()
 
@@ -75,8 +76,8 @@ function App() {
 
         <Stars radius={50} depth={50} count={2000} factor={4} saturation={0} />
 
-        <ChristmasTree isRotating={isRotating} />
-        <PhotoDecorations photos={photos} isRotating={isRotating} />
+        <ChristmasTree isRotating={isRotating} isTreeExploded={isTreeExploded} />
+        <PhotoDecorations photos={photos} isRotating={isRotating} isTreeExploded={isTreeExploded} />
 
         {explosions.map(exp => (
           <ParticleExplosion key={exp.id} position={exp.position} />
@@ -113,6 +114,12 @@ function App() {
           onClick={triggerExplosion}
         >
           🎆 烟花特效
+        </button>
+        <button
+          className="control-btn explode-btn"
+          onClick={() => setIsTreeExploded(!isTreeExploded)}
+        >
+          💥 {isTreeExploded ? 'Reassemble' : 'Explode'}
         </button>
         <button
           className={`control-btn rotate-btn ${isRotating ? 'active' : ''}`}
